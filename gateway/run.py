@@ -2994,9 +2994,20 @@ class GatewayRunner:
                 from agent.model_metadata import get_model_context_length
 
                 _msg_cwd = os.environ.get("MESSAGING_CWD", os.path.expanduser("~"))
+                # Load config to check custom_providers for context length
+                _gw_agent_cfg = {}
+                try:
+                    import yaml as _gw_yaml
+                    _gw_cfg_path = _hermes_home / "config.yaml"
+                    if _gw_cfg_path.exists():
+                        with open(_gw_cfg_path, encoding="utf-8") as _gw_f:
+                            _gw_agent_cfg = _gw_yaml.safe_load(_gw_f) or {}
+                except Exception:
+                    pass
                 _msg_ctx_len = get_model_context_length(
                     self._model,
                     base_url=self._base_url or "",
+                    agent_config=_gw_agent_cfg,
                 )
                 _ctx_result = await preprocess_context_references_async(
                     message_text,
@@ -3827,6 +3838,7 @@ class GatewayRunner:
             api_key=api_key or "",
             config_context_length=config_context_length,
             provider=provider or "",
+            agent_config=data if 'data' in dir() else None,
         )
 
         # Format context source hint
@@ -4442,6 +4454,7 @@ class GatewayRunner:
                     base_url=result.base_url or current_base_url,
                     api_key=result.api_key or current_api_key,
                     provider=result.target_provider,
+                    agent_config=cfg if 'cfg' in dir() else None,
                 )
                 lines.append(f"Context: {ctx:,} tokens")
             except Exception:

@@ -1733,10 +1733,18 @@ class AIAgent:
 
             aux_base_url = str(getattr(client, "base_url", ""))
             aux_api_key = str(getattr(client, "api_key", ""))
+            # Load config to check custom_providers for aux model context length
+            _aux_agent_cfg = {}
+            try:
+                from hermes_cli.config import load_config as _load_aux_config
+                _aux_agent_cfg = _load_aux_config() or {}
+            except Exception:
+                pass
             aux_context = get_model_context_length(
                 aux_model,
                 base_url=aux_base_url,
                 api_key=aux_api_key,
+                agent_config=_aux_agent_cfg,
             )
 
             threshold = self.context_compressor.threshold_tokens
@@ -5494,9 +5502,16 @@ class AIAgent:
             # causing oversized sessions to overflow the fallback.
             if hasattr(self, 'context_compressor') and self.context_compressor:
                 from agent.model_metadata import get_model_context_length
+                from hermes_cli.config import load_config as _load_fb_config
+                _fb_agent_cfg = {}
+                try:
+                    _fb_agent_cfg = _load_fb_config() or {}
+                except Exception:
+                    pass
                 fb_context_length = get_model_context_length(
                     self.model, base_url=self.base_url,
                     api_key=self.api_key, provider=self.provider,
+                    agent_config=_fb_agent_cfg,
                 )
                 self.context_compressor.update_model(
                     model=self.model,

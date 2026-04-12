@@ -920,6 +920,7 @@ def get_model_context_length(
     api_key: str = "",
     config_context_length: int | None = None,
     provider: str = "",
+    agent_config: dict | None = None,
 ) -> int:
     """Get the context length for a model.
 
@@ -938,6 +939,27 @@ def get_model_context_length(
     # 0. Explicit config override — user knows best
     if config_context_length is not None and isinstance(config_context_length, int) and config_context_length > 0:
         return config_context_length
+
+    # 0b. Check custom_providers per-model context_length from agent_config
+    if agent_config is not None and base_url:
+        _custom_providers = agent_config.get("custom_providers")
+        if isinstance(_custom_providers, list):
+            for _cp in _custom_providers:
+                if not isinstance(_cp, dict):
+                    continue
+                _cp_url = (_cp.get("base_url") or "").rstrip("/")
+                if _cp_url and _cp_url == base_url.rstrip("/"):
+                    _cp_models = _cp.get("models", {})
+                    if isinstance(_cp_models, dict):
+                        _cp_model_cfg = _cp_models.get(model, {})
+                        if isinstance(_cp_model_cfg, dict):
+                            _cp_ctx = _cp_model_cfg.get("context_length")
+                            if _cp_ctx is not None:
+                                try:
+                                    return int(_cp_ctx)
+                                except (TypeError, ValueError):
+                                    pass
+                    break
 
     # Normalise provider-prefixed model names (e.g. "local:model-name" →
     # "model-name") so cache lookups and server queries use the bare ID that

@@ -4465,11 +4465,18 @@ class HermesCLI:
         else:
             try:
                 from agent.model_metadata import get_model_context_length
+                from hermes_cli.config import load_config as _load_picker_config
+                _picker_cfg = {}
+                try:
+                    _picker_cfg = _load_picker_config() or {}
+                except Exception:
+                    pass
                 ctx = get_model_context_length(
                     result.new_model,
                     base_url=result.base_url or self.base_url,
                     api_key=result.api_key or self.api_key,
                     provider=result.target_provider,
+                    agent_config=_picker_cfg,
                 )
                 _cprint(f"    Context: {ctx:,} tokens")
             except Exception:
@@ -7408,8 +7415,15 @@ class HermesCLI:
             try:
                 from agent.context_references import preprocess_context_references
                 from agent.model_metadata import get_model_context_length
+                from hermes_cli.config import load_config as _load_cli_config
+                _cli_agent_cfg = {}
+                try:
+                    _cli_agent_cfg = _load_cli_config() or {}
+                except Exception:
+                    pass
                 _ctx_len = get_model_context_length(
-                    self.model, base_url=self.base_url or "", api_key=self.api_key or "")
+                    self.model, base_url=self.base_url or "", api_key=self.api_key or "",
+                    agent_config=_cli_agent_cfg)
                 _ctx_result = preprocess_context_references(
                     message, cwd=os.getcwd(), context_length=_ctx_len)
                 if _ctx_result.expanded or _ctx_result.blocked:
