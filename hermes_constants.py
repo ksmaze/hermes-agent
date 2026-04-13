@@ -4,8 +4,44 @@ Import-safe module with no dependencies — can be imported from anywhere
 without risk of circular imports.
 """
 
+import json as _json
 import os
 from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Global UTF-8 patch: make json.dumps default to ensure_ascii=False so that
+# non-ASCII characters (CJK, emoji, accented letters, etc.) are serialized as
+# real UTF-8 text rather than \uXXXX escape sequences.  Callers that
+# explicitly pass ensure_ascii=True are unaffected.
+# ---------------------------------------------------------------------------
+_original_json_dumps = _json.dumps
+_original_json_dump = _json.dump
+
+
+def _utf8_json_dumps(obj, *, skipkeys=False, ensure_ascii=False, check_circular=True,
+                     allow_nan=True, cls=None, indent=None, separators=None,
+                     default=None, sort_keys=False, **kw):
+    return _original_json_dumps(
+        obj, skipkeys=skipkeys, ensure_ascii=ensure_ascii,
+        check_circular=check_circular, allow_nan=allow_nan, cls=cls,
+        indent=indent, separators=separators, default=default,
+        sort_keys=sort_keys, **kw,
+    )
+
+
+def _utf8_json_dump(obj, fp, *, skipkeys=False, ensure_ascii=False, check_circular=True,
+                     allow_nan=True, cls=None, indent=None, separators=None,
+                     default=None, sort_keys=False, **kw):
+    return _original_json_dump(
+        obj, fp, skipkeys=skipkeys, ensure_ascii=ensure_ascii,
+        check_circular=check_circular, allow_nan=allow_nan, cls=cls,
+        indent=indent, separators=separators, default=default,
+        sort_keys=sort_keys, **kw,
+    )
+ 
+ 
+_json.dumps = _utf8_json_dumps
+_json.dump = _utf8_json_dump
 
 
 def get_hermes_home() -> Path:
