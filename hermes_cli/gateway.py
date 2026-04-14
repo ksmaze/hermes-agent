@@ -840,7 +840,7 @@ Environment="LOGNAME={username}"
 Environment="PATH={sane_path}"
 Environment="VIRTUAL_ENV={venv_dir}"
 Environment="HERMES_HOME={hermes_home}"
-Restart=on-failure
+Restart=always
 RestartSec=30
 RestartForceExitStatus={GATEWAY_SERVICE_RESTART_EXIT_CODE}
 KillMode=mixed
@@ -861,7 +861,8 @@ WantedBy=multi-user.target
     sane_path = ":".join(path_entries)
     return f"""[Unit]
 Description={SERVICE_DESCRIPTION}
-After=network.target
+After=network-online.target
+Wants=network-online.target
 StartLimitIntervalSec=600
 StartLimitBurst=5
 
@@ -872,7 +873,7 @@ WorkingDirectory={working_dir}
 Environment="PATH={sane_path}"
 Environment="VIRTUAL_ENV={venv_dir}"
 Environment="HERMES_HOME={hermes_home}"
-Restart=on-failure
+Restart=always
 RestartSec=30
 RestartForceExitStatus={GATEWAY_SERVICE_RESTART_EXIT_CODE}
 KillMode=mixed
