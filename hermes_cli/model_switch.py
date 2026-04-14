@@ -758,6 +758,30 @@ def list_authenticated_providers(
     results: List[dict] = []
     seen_slugs: set = set()
 
+    def _configured_models_list(raw_models, default_model: str) -> list[str]:
+        models_list: list[str] = []
+        if isinstance(raw_models, dict):
+            for model_name in raw_models.keys():
+                normalized = str(model_name or "").strip()
+                if normalized and normalized not in models_list:
+                    models_list.append(normalized)
+        elif isinstance(raw_models, list):
+            for item in raw_models:
+                if isinstance(item, str):
+                    normalized = item.strip()
+                elif isinstance(item, dict):
+                    normalized = str(item.get("id") or item.get("name") or "").strip()
+                else:
+                    normalized = ""
+                if normalized and normalized not in models_list:
+                    models_list.append(normalized)
+        normalized_default = default_model.strip()
+        if normalized_default:
+            if normalized_default in models_list:
+                models_list.remove(normalized_default)
+            models_list.insert(0, normalized_default)
+        return models_list
+
     data = fetch_models_dev()
 
     # Build curated model lists keyed by hermes provider ID
@@ -919,17 +943,16 @@ def list_authenticated_providers(
             if slug in seen_slugs:
                 continue
 
-            models_list = []
             default_model = (entry.get("model") or "").strip()
-            if default_model:
-                models_list.append(default_model)
+            models_list = _configured_models_list(entry.get("models"), default_model)
+            current_provider_norm = str(current_provider or "").strip().lower()
 
             results.append({
                 "slug": slug,
                 "name": display_name,
-                "is_current": slug == current_provider,
+                "is_current": slug == current_provider or display_name.strip().lower() == current_provider_norm,
                 "is_user_defined": True,
-                "models": models_list,
+                "models": models_list[:max_models],
                 "total_models": len(models_list),
                 "source": "user-config",
                 "api_url": api_url,
