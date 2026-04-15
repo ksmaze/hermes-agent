@@ -13,9 +13,17 @@ from pathlib import Path
 # non-ASCII characters (CJK, emoji, accented letters, etc.) are serialized as
 # real UTF-8 text rather than \uXXXX escape sequences.  Callers that
 # explicitly pass ensure_ascii=True are unaffected.
+#
+# Preserve the true stdlib functions across module reloads/tests so we don't
+# accidentally wrap our own wrapper and recurse forever.
 # ---------------------------------------------------------------------------
-_original_json_dumps = _json.dumps
-_original_json_dump = _json.dump
+if not hasattr(_json, "_hermes_original_dumps"):
+    _json._hermes_original_dumps = _json.dumps
+if not hasattr(_json, "_hermes_original_dump"):
+    _json._hermes_original_dump = _json.dump
+
+_original_json_dumps = _json._hermes_original_dumps
+_original_json_dump = _json._hermes_original_dump
 
 
 def _utf8_json_dumps(obj, *, skipkeys=False, ensure_ascii=False, check_circular=True,
