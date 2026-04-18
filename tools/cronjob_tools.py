@@ -213,6 +213,8 @@ def _format_job(job: Dict[str, Any]) -> Dict[str, Any]:
     }
     if job.get("script"):
         result["script"] = job["script"]
+    if job.get("disabled_toolsets"):
+        result["disabled_toolsets"] = job["disabled_toolsets"]
     return result
 
 
@@ -232,6 +234,7 @@ def cronjob(
     base_url: Optional[str] = None,
     reason: Optional[str] = None,
     script: Optional[str] = None,
+    disabled_toolsets: Optional[List[str]] = None,
     task_id: str = None,
 ) -> str:
     """Unified cron job management tool."""
@@ -269,6 +272,7 @@ def cronjob(
                 provider=_normalize_optional_job_value(provider),
                 base_url=_normalize_optional_job_value(base_url, strip_trailing_slash=True),
                 script=_normalize_optional_job_value(script),
+                disabled_toolsets=disabled_toolsets or [],
             )
             return json.dumps(
                 {

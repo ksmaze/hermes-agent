@@ -378,6 +378,7 @@ def create_job(
     provider: Optional[str] = None,
     base_url: Optional[str] = None,
     script: Optional[str] = None,
+    disabled_toolsets: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Create a new cron job.
@@ -397,6 +398,9 @@ def create_job(
         script: Optional path to a Python script whose stdout is injected into the
                 prompt each run.  The script runs before the agent turn, and its output
                 is prepended as context.  Useful for data collection / change detection.
+        disabled_toolsets: Optional list of toolset names to disable for this job (in
+                addition to the always-disabled cron defaults).  Use to save tokens by
+                excluding unneeded tool groups, e.g. ["web", "search", "browser"].
 
     Returns:
         The created job dict
@@ -427,6 +431,12 @@ def create_job(
     normalized_base_url = normalized_base_url or None
     normalized_script = str(script).strip() if isinstance(script, str) else None
     normalized_script = normalized_script or None
+    normalized_disabled_toolsets: List[str] = []
+    if disabled_toolsets:
+        for ts in disabled_toolsets:
+            ts = str(ts).strip()
+            if ts and ts not in normalized_disabled_toolsets:
+                normalized_disabled_toolsets.append(ts)
 
     label_source = (prompt or (normalized_skills[0] if normalized_skills else None)) or "cron job"
     job = {
@@ -439,6 +449,7 @@ def create_job(
         "provider": normalized_provider,
         "base_url": normalized_base_url,
         "script": normalized_script,
+        "disabled_toolsets": normalized_disabled_toolsets,
         "schedule": parsed_schedule,
         "schedule_display": parsed_schedule.get("display", schedule),
         "repeat": {
