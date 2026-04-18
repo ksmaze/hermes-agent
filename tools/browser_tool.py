@@ -653,6 +653,26 @@ BROWSER_TOOL_SCHEMAS = [
         }
     },
     {
+        "name": "browser_scan",
+        "description": "Read the current page as simplified HTML or plain text for better content extraction than an accessibility snapshot. Use this for page reading/understanding; keep using browser_snapshot for interaction refs used by browser_click and browser_type. Requires browser_navigate first.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "text_only": {
+                    "type": "boolean",
+                    "description": "If true, return plain text instead of simplified HTML.",
+                    "default": False
+                },
+                "maxchars": {
+                    "type": "integer",
+                    "description": "Maximum characters to return after extraction/truncation.",
+                    "default": 35000
+                }
+            },
+            "required": []
+        }
+    },
+    {
         "name": "browser_click",
         "description": "Click on an element identified by its ref ID from the snapshot (e.g., '@e5'). The ref IDs are shown in square brackets in the snapshot output. Requires browser_navigate and browser_snapshot to be called first.",
         "parameters": {
@@ -1459,6 +1479,35 @@ def browser_snapshot(
             "success": False,
             "error": result.get("error", "Failed to get snapshot")
         }, ensure_ascii=False)
+
+
+def browser_scan(text_only: bool = False, maxchars: int = 35000, task_id: Optional[str] = None) -> str:
+    """Read the current page as simplified HTML or plain text."""
+    if _is_camofox_mode():
+        from tools.browser_camofox import camofox_scan
+        return camofox_scan(text_only=text_only, maxchars=maxchars, task_id=task_id)
+
+    js_expression = "document.body ? (document.body.innerText || '') : ''" if text_only else "document.documentElement ? document.documentElement.outerHTML : ''"
+    eval_result = _browser_eval(js_expression, task_id)
+    try:
+        parsed = json.loads(eval_result)
+    except json.JSONDecodeError:
+        return json.dumps({"success": False, "error": "Failed to parse browser scan result"}, ensure_ascii=False)
+
+    if not parsed.get("success"):
+        return json.dumps(parsed, ensure_ascii=False)
+
+    content = parsed.get("result")
+    if not isinstance(content, str):
+        content = json.dumps(content, ensure_ascii=False, default=str)
+    if len(content) > maxchars:
+        content = content[:maxchars]
+    return json.dumps({
+        "success": True,
+        "content": content,
+        "truncated": len(parsed.get("result", "")) > maxchars if isinstance(parsed.get("result"), str) else False,
+        "text_only": text_only,
+    }, ensure_ascii=False)
 
 
 def browser_click(ref: str, task_id: Optional[str] = None) -> str:
@@ -2319,6 +2368,15 @@ registry.register(
         full=args.get("full", False), task_id=kw.get("task_id"), user_task=kw.get("user_task")),
     check_fn=check_browser_requirements,
     emoji="📸",
+)
+registry.register(
+    name="browser_scan",
+    toolset="browser",
+    schema=_BROWSER_SCHEMA_MAP["browser_scan"],
+    handler=lambda args, **kw: browser_scan(
+        text_only=args.get("text_only", False), maxchars=args.get("maxchars", 35000), task_id=kw.get("task_id")),
+    check_fn=check_browser_requirements,
+    emoji="🧾",
 )
 registry.register(
     name="browser_click",

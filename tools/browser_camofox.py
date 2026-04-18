@@ -327,6 +327,33 @@ def camofox_snapshot(full: bool = False, task_id: Optional[str] = None,
         return tool_error(str(e), success=False)
 
 
+def camofox_scan(text_only: bool = False, maxchars: int = 35000, task_id: Optional[str] = None) -> str:
+    """Read the current page using the Camofox server's scan endpoint."""
+    try:
+        session = _get_session(task_id)
+        if not session["tab_id"]:
+            return tool_error("No browser session. Call browser_navigate first.", success=False)
+
+        data = _get(
+            f"/tabs/{session['tab_id']}/scan",
+            params={
+                "userId": session["user_id"],
+                "textOnly": str(text_only).lower(),
+                "maxchars": maxchars,
+                "cutlist": "true",
+            },
+            timeout=60,
+        )
+        return json.dumps({
+            "success": True,
+            "content": data.get("content", ""),
+            "url": data.get("url", ""),
+            "text_only": text_only,
+        }, ensure_ascii=False)
+    except Exception as e:
+        return tool_error(str(e), success=False)
+
+
 def camofox_click(ref: str, task_id: Optional[str] = None) -> str:
     """Click an element by ref via Camofox."""
     try:
