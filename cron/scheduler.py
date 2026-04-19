@@ -626,6 +626,8 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
             os.environ["HERMES_CRON_AUTO_DELIVER_CHAT_ID"] = str(delivery_target["chat_id"])
             if delivery_target.get("thread_id") is not None:
                 os.environ["HERMES_CRON_AUTO_DELIVER_THREAD_ID"] = str(delivery_target["thread_id"])
+        if job.get("disabled_skills"):
+            os.environ["HERMES_CRON_DISABLED_SKILLS"] = json.dumps(job.get("disabled_skills") or [])
 
         model = job.get("model") or os.getenv("HERMES_MODEL") or ""
 
@@ -895,6 +897,7 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
             "HERMES_CRON_AUTO_DELIVER_PLATFORM",
             "HERMES_CRON_AUTO_DELIVER_CHAT_ID",
             "HERMES_CRON_AUTO_DELIVER_THREAD_ID",
+            "HERMES_CRON_DISABLED_SKILLS",
         ):
             os.environ.pop(key, None)
         if _session_db:

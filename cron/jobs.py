@@ -55,12 +55,30 @@ def _normalize_skill_list(skill: Optional[str] = None, skills: Optional[Any] = N
     return normalized
 
 
+def _normalize_name_list(values: Optional[Any]) -> List[str]:
+    if values is None:
+        return []
+    if isinstance(values, str):
+        raw_items = [values]
+    else:
+        raw_items = list(values)
+
+    normalized: List[str] = []
+    for item in raw_items:
+        text = str(item or "").strip()
+        if text and text not in normalized:
+            normalized.append(text)
+    return normalized
+
+
 def _apply_skill_fields(job: Dict[str, Any]) -> Dict[str, Any]:
     """Return a job dict with canonical `skills` and legacy `skill` fields aligned."""
     normalized = dict(job)
     skills = _normalize_skill_list(normalized.get("skill"), normalized.get("skills"))
     normalized["skills"] = skills
     normalized["skill"] = skills[0] if skills else None
+    normalized["disabled_skills"] = _normalize_name_list(normalized.get("disabled_skills"))
+    normalized["disabled_toolsets"] = _normalize_name_list(normalized.get("disabled_toolsets"))
     return normalized
 
 
@@ -378,6 +396,7 @@ def create_job(
     provider: Optional[str] = None,
     base_url: Optional[str] = None,
     script: Optional[str] = None,
+    disabled_skills: Optional[List[str]] = None,
     disabled_toolsets: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
@@ -398,6 +417,8 @@ def create_job(
         script: Optional path to a Python script whose stdout is injected into the
                 prompt each run.  The script runs before the agent turn, and its output
                 is prepended as context.  Useful for data collection / change detection.
+        disabled_skills: Optional list of skill names or category prefixes to disable
+                for this job, e.g. ["architecture-diagram"] or ["creative"].
         disabled_toolsets: Optional list of toolset names to disable for this job (in
                 addition to the always-disabled cron defaults).  Use to save tokens by
                 excluding unneeded tool groups, e.g. ["web", "search", "browser"].
@@ -431,12 +452,8 @@ def create_job(
     normalized_base_url = normalized_base_url or None
     normalized_script = str(script).strip() if isinstance(script, str) else None
     normalized_script = normalized_script or None
-    normalized_disabled_toolsets: List[str] = []
-    if disabled_toolsets:
-        for ts in disabled_toolsets:
-            ts = str(ts).strip()
-            if ts and ts not in normalized_disabled_toolsets:
-                normalized_disabled_toolsets.append(ts)
+    normalized_disabled_skills = _normalize_name_list(disabled_skills)
+    normalized_disabled_toolsets = _normalize_name_list(disabled_toolsets)
 
     label_source = (prompt or (normalized_skills[0] if normalized_skills else None)) or "cron job"
     job = {
@@ -449,6 +466,7 @@ def create_job(
         "provider": normalized_provider,
         "base_url": normalized_base_url,
         "script": normalized_script,
+        "disabled_skills": normalized_disabled_skills,
         "disabled_toolsets": normalized_disabled_toolsets,
         "schedule": parsed_schedule,
         "schedule_display": parsed_schedule.get("display", schedule),

@@ -19,8 +19,9 @@ from agent.skill_utils import (
     extract_skill_conditions,
     extract_skill_description,
     get_all_skills_dirs,
-    get_disabled_skill_names,
+    get_effective_disabled_skill_names,
     iter_skill_index_files,
+    matches_disabled_skill_name,
     parse_frontmatter,
     skill_matches_platform,
 )
@@ -613,12 +614,14 @@ def build_skills_system_prompt(
         or get_session_env("HERMES_SESSION_PLATFORM")
         or ""
     )
+    _runtime_disabled_skills = os.environ.get("HERMES_CRON_DISABLED_SKILLS", "")
     cache_key = (
         str(skills_dir.resolve()),
         tuple(str(d) for d in external_dirs),
         tuple(sorted(str(t) for t in (available_tools or set()))),
         tuple(sorted(str(ts) for ts in (available_toolsets or set()))),
         _platform_hint,
+        _runtime_disabled_skills,
     )
     with _SKILLS_PROMPT_CACHE_LOCK:
         cached = _SKILLS_PROMPT_CACHE.get(cache_key)
@@ -626,7 +629,7 @@ def build_skills_system_prompt(
             _SKILLS_PROMPT_CACHE.move_to_end(cache_key)
             return cached
 
-    disabled = get_disabled_skill_names()
+    disabled = get_effective_disabled_skill_names()
 
     # ── Layer 2: disk snapshot ────────────────────────────────────────
     snapshot = _load_skills_snapshot(skills_dir)
@@ -645,7 +648,12 @@ def build_skills_system_prompt(
             platforms = entry.get("platforms") or []
             if not skill_matches_platform({"platforms": platforms}):
                 continue
-            if frontmatter_name in disabled or skill_name in disabled:
+            if matches_disabled_skill_name(
+                disabled,
+                skill_name,
+                category=category,
+                frontmatter_name=frontmatter_name,
+            ):
                 continue
             if not _skill_should_show(
                 entry.get("conditions") or {},
@@ -670,7 +678,12 @@ def build_skills_system_prompt(
             if not is_compatible:
                 continue
             skill_name = entry["skill_name"]
-            if entry["frontmatter_name"] in disabled or skill_name in disabled:
+            if matches_disabled_skill_name(
+                disabled,
+                skill_name,
+                category=entry["category"],
+                frontmatter_name=entry["frontmatter_name"],
+            ):
                 continue
             if not _skill_should_show(
                 extract_skill_conditions(frontmatter),
@@ -724,7 +737,12 @@ def build_skills_system_prompt(
                 skill_name = entry["skill_name"]
                 if skill_name in seen_skill_names:
                     continue
-                if entry["frontmatter_name"] in disabled or skill_name in disabled:
+                if matches_disabled_skill_name(
+                    disabled,
+                    skill_name,
+                    category=entry["category"],
+                    frontmatter_name=entry["frontmatter_name"],
+                ):
                     continue
                 if not _skill_should_show(
                     extract_skill_conditions(frontmatter),

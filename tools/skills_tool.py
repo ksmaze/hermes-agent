@@ -500,28 +500,17 @@ def _parse_tags(tags_value) -> List[str]:
 def _get_disabled_skill_names() -> Set[str]:
     """Load disabled skill names from config.
 
-    Delegates to ``agent.skill_utils.get_disabled_skill_names`` — kept here
+    Delegates to ``agent.skill_utils.get_effective_disabled_skill_names`` — kept here
     as a public re-export so existing callers don't need updating.
     """
-    from agent.skill_utils import get_disabled_skill_names
-    return get_disabled_skill_names()
+    from agent.skill_utils import get_effective_disabled_skill_names
+    return get_effective_disabled_skill_names()
 
 
 def _is_skill_disabled(name: str, platform: str = None) -> bool:
     """Check if a skill is disabled in config."""
-    import os
-    try:
-        from hermes_cli.config import load_config
-        config = load_config()
-        skills_cfg = config.get("skills", {})
-        resolved_platform = platform or os.getenv("HERMES_PLATFORM")
-        if resolved_platform:
-            platform_disabled = skills_cfg.get("platform_disabled", {}).get(resolved_platform)
-            if platform_disabled is not None:
-                return name in platform_disabled
-        return name in skills_cfg.get("disabled", [])
-    except Exception:
-        return False
+    from agent.skill_utils import is_skill_disabled
+    return is_skill_disabled(name, platform=platform)
 
 
 def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
@@ -535,7 +524,7 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
     Returns:
         List of skill metadata dicts (name, description, category).
     """
-    from agent.skill_utils import get_external_skills_dirs
+    from agent.skill_utils import get_external_skills_dirs, matches_disabled_skill_name
 
     skills = []
     seen_names: set = set()
@@ -566,7 +555,7 @@ def _find_all_skills(*, skip_disabled: bool = False) -> List[Dict[str, Any]]:
                 name = frontmatter.get("name", skill_dir.name)[:MAX_NAME_LENGTH]
                 if name in seen_names:
                     continue
-                if name in disabled:
+                if matches_disabled_skill_name(disabled, name, category=_get_category_from_path(skill_md), frontmatter_name=name):
                     continue
 
                 description = frontmatter.get("description", "")
@@ -872,7 +861,7 @@ def skill_view(name: str, file_path: str = None, task_id: str = None) -> str:
             # Plugin itself not found — fall through to flat-tree scan
             # which will return a normal "not found" with suggestions.
 
-        from agent.skill_utils import get_external_skills_dirs
+        from agent.skill_utils import get_external_skills_dirs, is_skill_disabled
 
         # Build list of all skill directories to search
         all_dirs = []
@@ -997,7 +986,12 @@ def skill_view(name: str, file_path: str = None, task_id: str = None) -> str:
 
         # Check if the skill is disabled by the user
         resolved_name = parsed_frontmatter.get("name", skill_md.parent.name)
-        if _is_skill_disabled(resolved_name):
+        resolved_category = _get_category_from_path(skill_md)
+        if is_skill_disabled(
+            resolved_name,
+            category=resolved_category,
+            frontmatter_name=resolved_name,
+        ):
             return json.dumps(
                 {
                     "success": False,

@@ -6,6 +6,7 @@ tool registration or provider resolution.
 """
 
 import logging
+import json
 import os
 import re
 import sys
@@ -166,6 +167,51 @@ def _normalize_string_set(values) -> Set[str]:
     if isinstance(values, str):
         values = [values]
     return {str(v).strip() for v in values if str(v).strip()}
+
+
+def _load_runtime_disabled_skill_names() -> Set[str]:
+    raw = os.getenv("HERMES_CRON_DISABLED_SKILLS", "").strip()
+    if not raw:
+        return set()
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        parsed = raw.split(",")
+    return _normalize_string_set(parsed)
+
+
+def get_effective_disabled_skill_names(platform: str | None = None) -> Set[str]:
+    return get_disabled_skill_names(platform) | _load_runtime_disabled_skill_names()
+
+
+def matches_disabled_skill_name(
+    disabled: Set[str],
+    skill_name: str,
+    *,
+    category: str | None = None,
+    frontmatter_name: str | None = None,
+) -> bool:
+    normalized_disabled = _normalize_string_set(disabled)
+    if skill_name in normalized_disabled:
+        return True
+    if frontmatter_name and frontmatter_name in normalized_disabled:
+        return True
+    return False
+
+
+def is_skill_disabled(
+    skill_name: str,
+    *,
+    category: str | None = None,
+    frontmatter_name: str | None = None,
+    platform: str | None = None,
+) -> bool:
+    return matches_disabled_skill_name(
+        get_effective_disabled_skill_names(platform),
+        skill_name,
+        category=category,
+        frontmatter_name=frontmatter_name,
+    )
 
 
 # ── External skills directories ──────────────────────────────────────────

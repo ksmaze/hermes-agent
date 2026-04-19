@@ -1764,6 +1764,7 @@ class APIServerAdapter(BasePlatformAdapter):
             prompt = body.get("prompt", "")
             deliver = body.get("deliver", "local")
             skills = body.get("skills")
+            disabled_skills = body.get("disabled_skills")
             repeat = body.get("repeat")
 
             if not name:
@@ -1789,6 +1790,8 @@ class APIServerAdapter(BasePlatformAdapter):
             }
             if skills:
                 kwargs["skills"] = skills
+            if disabled_skills:
+                kwargs["disabled_skills"] = disabled_skills
             if repeat is not None:
                 kwargs["repeat"] = repeat
 
