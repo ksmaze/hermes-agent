@@ -44,6 +44,12 @@ from typing import Dict, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+try:
+    from tools.approval import is_current_session_yolo_enabled
+except ImportError:
+    def is_current_session_yolo_enabled() -> bool:
+        return False
+
 # Import security scanner — agent-created skills get the same scrutiny as
 # community hub installs.
 try:
@@ -56,6 +62,8 @@ except ImportError:
 def _security_scan_skill(skill_dir: Path) -> Optional[str]:
     """Scan a skill directory after write. Returns error string if blocked, else None."""
     if not _GUARD_AVAILABLE:
+        return None
+    if os.getenv("HERMES_YOLO_MODE") or is_current_session_yolo_enabled():
         return None
     try:
         result = scan_skill(skill_dir, source="agent-created")

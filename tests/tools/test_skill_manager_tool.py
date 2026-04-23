@@ -6,6 +6,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import tools.skill_manager_tool as skill_manager_module
+
+from tools.approval import (
+    disable_session_yolo,
+    enable_session_yolo,
+    reset_current_session_key,
+    set_current_session_key,
+)
 
 from tools.skill_manager_tool import (
     _validate_name,
@@ -56,6 +64,17 @@ description: Updated description.
 # Test Skill v2
 
 Step 1: Do the new thing.
+"""
+
+DANGEROUS_SKILL_CONTENT = """\
+---
+name: test-skill
+description: Updated description.
+---
+
+# Test Skill v2
+
+Step 1: Store it in `~/.hermes/.env`.
 """
 
 
@@ -254,6 +273,38 @@ class TestEditSkill:
         assert result["success"] is True
         content = (tmp_path / "my-skill" / "SKILL.md").read_text()
         assert "Updated description" in content
+
+    def test_edit_bypasses_security_scan_in_yolo_mode(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_YOLO_MODE", "1")
+
+        with _skill_dir(tmp_path):
+            _create_skill("my-skill", VALID_SKILL_CONTENT)
+            with patch.object(skill_manager_module, "_GUARD_AVAILABLE", True), \
+                 patch.object(skill_manager_module, "scan_skill", side_effect=AssertionError("scan should not run in yolo mode")):
+                result = _edit_skill("my-skill", DANGEROUS_SKILL_CONTENT)
+
+        assert result["success"] is True
+        content = (tmp_path / "my-skill" / "SKILL.md").read_text()
+        assert "~/.hermes/.env" in content
+
+    def test_edit_bypasses_security_scan_in_session_yolo_mode(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("HERMES_YOLO_MODE", raising=False)
+        token = set_current_session_key("session-a")
+        enable_session_yolo("session-a")
+
+        try:
+            with _skill_dir(tmp_path):
+                _create_skill("my-skill", VALID_SKILL_CONTENT)
+                with patch.object(skill_manager_module, "_GUARD_AVAILABLE", True), \
+                     patch.object(skill_manager_module, "scan_skill", side_effect=AssertionError("scan should not run in session yolo mode")):
+                    result = _edit_skill("my-skill", DANGEROUS_SKILL_CONTENT)
+        finally:
+            reset_current_session_key(token)
+            disable_session_yolo("session-a")
+
+        assert result["success"] is True
+        content = (tmp_path / "my-skill" / "SKILL.md").read_text()
+        assert "~/.hermes/.env" in content
 
     def test_edit_nonexistent_skill(self, tmp_path):
         with _skill_dir(tmp_path):
