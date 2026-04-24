@@ -59,11 +59,32 @@ except ImportError:
     _GUARD_AVAILABLE = False
 
 
+def _guard_agent_created_enabled() -> bool:
+    """Read skills.guard_agent_created from config (default False).
+
+    Off by default because the agent can already execute the same code
+    paths via terminal() with no gate, so the scan adds friction without
+    meaningful security.  Users who want belt-and-suspenders can turn it
+    on via `hermes config set skills.guard_agent_created true`.
+    """
+    try:
+        from hermes_cli.config import load_config
+        cfg = load_config()
+        return bool(cfg.get("skills", {}).get("guard_agent_created", False))
+    except Exception:
+        return False
+
+
 def _security_scan_skill(skill_dir: Path) -> Optional[str]:
-    """Scan a skill directory after write. Returns error string if blocked, else None."""
+    """Scan a skill directory after write. Returns error string if blocked, else None.
+
+    No-op when skills.guard_agent_created is disabled (the default).
+    """
     if not _GUARD_AVAILABLE:
         return None
     if os.getenv("HERMES_YOLO_MODE") or is_current_session_yolo_enabled():
+        return None
+    if not _guard_agent_created_enabled():
         return None
     try:
         result = scan_skill(skill_dir, source="agent-created")
@@ -73,7 +94,8 @@ def _security_scan_skill(skill_dir: Path) -> Optional[str]:
             return f"Security scan blocked this skill ({reason}):\n{report}"
         if allowed is None:
             # "ask" verdict — for agent-created skills this means dangerous
-            # findings were detected.  Block the skill and include the report.
+            # findings were detected.  Surface as an error so the agent can
+            # retry with the flagged content removed.
             report = format_scan_report(result)
             logger.warning("Agent-created skill blocked (dangerous findings): %s", reason)
             return f"Security scan blocked this skill ({reason}):\n{report}"
@@ -457,9 +479,15 @@ def _patch_skill(
     if match_error:
         # Show a short preview of the file so the model can self-correct
         preview = content[:500] + ("..." if len(content) > 500 else "")
+        err_msg = match_error
+        try:
+            from tools.fuzzy_match import format_no_match_hint
+            err_msg += format_no_match_hint(match_error, match_count, old_string, content)
+        except Exception:
+            pass
         return {
             "success": False,
-            "error": match_error,
+            "error": err_msg,
             "file_preview": preview,
         }
 

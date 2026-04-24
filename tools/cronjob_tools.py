@@ -219,6 +219,8 @@ def _format_job(job: Dict[str, Any]) -> Dict[str, Any]:
         result["disabled_skills"] = job["disabled_skills"]
     if job.get("disabled_toolsets"):
         result["disabled_toolsets"] = job["disabled_toolsets"]
+    if job.get("enabled_toolsets"):
+        result["enabled_toolsets"] = job["enabled_toolsets"]
     return result
 
 
@@ -240,6 +242,7 @@ def cronjob(
     script: Optional[str] = None,
     disabled_skills: Optional[List[str]] = None,
     disabled_toolsets: Optional[List[str]] = None,
+    enabled_toolsets: Optional[List[str]] = None,
     task_id: str = None,
 ) -> str:
     """Unified cron job management tool."""
@@ -279,6 +282,7 @@ def cronjob(
                 script=_normalize_optional_job_value(script),
                 disabled_skills=disabled_skills or [],
                 disabled_toolsets=disabled_toolsets or [],
+                enabled_toolsets=enabled_toolsets or None,
             )
             return json.dumps(
                 {
@@ -368,6 +372,8 @@ def cronjob(
                     if script_error:
                         return tool_error(script_error, success=False)
                 updates["script"] = _normalize_optional_job_value(script) if script else None
+            if enabled_toolsets is not None:
+                updates["enabled_toolsets"] = enabled_toolsets or None
             if repeat is not None:
                 # Normalize: treat 0 or negative as None (infinite)
                 normalized_repeat = None if repeat <= 0 else repeat
@@ -467,6 +473,11 @@ Important safety rule: cron-run sessions should not recursively schedule more cr
                 "type": "string",
                 "description": f"Optional path to a Python script that runs before each cron job execution. Its stdout is injected into the prompt as context. Use for data collection and change detection. Relative paths resolve under {display_hermes_home()}/scripts/. On update, pass empty string to clear."
             },
+            "enabled_toolsets": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional list of toolset names to restrict the job's agent to (e.g. [\"web\", \"terminal\", \"file\", \"delegation\"]). When set, only tools from these toolsets are loaded, significantly reducing input token overhead. When omitted, all default tools are loaded. Infer from the job's prompt — e.g. use \"web\" if it calls web_search, \"terminal\" if it runs scripts, \"file\" if it reads files, \"delegation\" if it calls delegate_task. On update, pass an empty array to clear."
+            },
         },
         "required": ["action"]
     }
@@ -511,6 +522,7 @@ registry.register(
         base_url=args.get("base_url"),
         reason=args.get("reason"),
         script=args.get("script"),
+        enabled_toolsets=args.get("enabled_toolsets"),
         task_id=kw.get("task_id"),
     ))(),
     check_fn=check_cronjob_requirements,
