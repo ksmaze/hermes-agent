@@ -2467,25 +2467,22 @@ class AIAgent:
             aux_base_url = str(getattr(client, "base_url", ""))
             aux_api_key = str(getattr(client, "api_key", ""))
 
-            _agent_cfg = getattr(self, "config", None)
-            if _agent_cfg is None:
-                _agent_cfg = {}
-                self.config = _agent_cfg
-            _ctx_kwargs = {
-                "config_context_length": getattr(self, "_aux_compression_context_length_config", None),
-            }
-            if (
-                not _agent_cfg
-                or isinstance(_agent_cfg.get("custom_providers"), list)
-                or isinstance(_agent_cfg.get("providers"), dict)
-            ):
-                _ctx_kwargs["agent_config"] = _agent_cfg
+            # Resolve custom_providers so the aux model's per-model
+            # context_length override is honoured (same path as __init__).
+            _aux_custom_providers = None
+            try:
+                from hermes_cli.config import load_config as _load_feas_config, get_compatible_custom_providers
+                _feas_cfg = _load_feas_config()
+                _aux_custom_providers = get_compatible_custom_providers(_feas_cfg)
+            except Exception:
+                pass
             aux_context = get_model_context_length(
                 aux_model,
                 base_url=aux_base_url,
                 api_key=aux_api_key,
                 config_context_length=getattr(self, "_aux_compression_context_length_config", None),
                 provider=getattr(self, "provider", ""),
+                custom_providers=_aux_custom_providers,
             )
 
             # Hard floor: the auxiliary compression model must have at least
