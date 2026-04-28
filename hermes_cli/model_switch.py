@@ -1013,6 +1013,25 @@ def list_authenticated_providers(
     seen_slugs: set = set()  # lowercase-normalized to catch case variants (#9545)
     seen_mdev_ids: set = set()  # prevent duplicate entries for aliases (e.g. kimi-coding + kimi-coding-cn)
 
+    def _auth_store_has_pool_entries(pool_store: dict, *provider_ids: str) -> bool:
+        """Return True only when auth.json credential_pool has real entries.
+
+        The picker previously treated mere key presence as authenticated, so a
+        suppressed provider lingering as ``{"copilot": []}`` still showed up in
+        /model. Empty lists/dicts/None must not count as usable credentials.
+        """
+        if not isinstance(pool_store, dict):
+            return False
+        for provider_id in provider_ids:
+            if not provider_id:
+                continue
+            entries = pool_store.get(provider_id)
+            if isinstance(entries, list) and len(entries) > 0:
+                return True
+            if isinstance(entries, dict) and len(entries) > 0:
+                return True
+        return False
+
     def _configured_models_list(raw_models, default_model: str) -> list[str]:
         models_list: list[str] = []
         if isinstance(raw_models, dict):
@@ -1082,7 +1101,7 @@ def list_authenticated_providers(
             try:
                 from hermes_cli.auth import _load_auth_store
                 store = _load_auth_store()
-                if store and hermes_id in store.get("credential_pool", {}):
+                if store and _auth_store_has_pool_entries(store.get("credential_pool", {}), hermes_id):
                     has_creds = True
             except Exception:
                 pass
@@ -1157,7 +1176,7 @@ def list_authenticated_providers(
                 pool_store = store.get("credential_pool", {})
                 if store and (
                     pid in providers_store or hermes_slug in providers_store
-                    or pid in pool_store or hermes_slug in pool_store
+                    or _auth_store_has_pool_entries(pool_store, pid, hermes_slug)
                 ):
                     has_creds = True
             except Exception as exc:
@@ -1247,7 +1266,7 @@ def list_authenticated_providers(
                 _cp_pool_store = _cp_store.get("credential_pool", {})
                 if _cp_store and (
                     _cp.slug in _cp_providers_store
-                    or _cp.slug in _cp_pool_store
+                    or _auth_store_has_pool_entries(_cp_pool_store, _cp.slug)
                 ):
                     _cp_has_creds = True
             except Exception:

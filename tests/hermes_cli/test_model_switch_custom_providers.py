@@ -65,6 +65,34 @@ def test_resolve_provider_full_finds_named_custom_provider():
     assert resolved.source == "user-config"
 
 
+def test_list_authenticated_providers_ignores_empty_suppressed_copilot_pool(monkeypatch):
+    """An empty credential_pool entry must not make Copilot appear authenticated.
+
+    Regression: `hermes auth remove copilot` leaves `credential_pool.copilot = []`
+    plus suppression markers in auth.json. The /model picker previously treated
+    mere key presence as usable credentials and still showed Copilot.
+    """
+    monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {})
+
+    fake_store = {
+        "providers": {},
+        "credential_pool": {"copilot": []},
+        "suppressed_sources": {
+            "copilot": ["gh_cli", "env:COPILOT_GITHUB_TOKEN", "env:GH_TOKEN", "env:GITHUB_TOKEN"],
+        },
+    }
+    monkeypatch.setattr("hermes_cli.auth._load_auth_store", lambda: fake_store)
+
+    providers = list_authenticated_providers(
+        current_provider="openai-codex",
+        user_providers={},
+        custom_providers=[],
+        max_models=50,
+    )
+
+    assert not any(p["slug"] == "copilot" for p in providers)
+
+
 def test_switch_model_accepts_explicit_named_custom_provider(monkeypatch):
     """Shared /model switch pipeline should accept --provider for custom_providers."""
     monkeypatch.setattr(
