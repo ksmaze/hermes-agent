@@ -534,3 +534,52 @@ def test_lmstudio_picker_skips_probe_when_not_configured(monkeypatch):
     )
 
     assert "base_url" not in captured
+
+
+def test_switch_model_surfaces_declared_custom_provider_capabilities(monkeypatch):
+    """Switch results should expose capabilities declared in custom_providers."""
+    monkeypatch.setattr(
+        "hermes_cli.runtime_provider.resolve_runtime_provider",
+        lambda **kwargs: {
+            "api_key": "***",
+            "base_url": "http://127.0.0.1:4141/v1",
+            "api_mode": "chat_completions",
+        },
+    )
+    monkeypatch.setattr("hermes_cli.models.validate_requested_model", lambda *a, **k: _MOCK_VALIDATION)
+
+    result = switch_model(
+        raw_input="my-llava-model",
+        current_provider="openai-codex",
+        current_model="gpt-5.4",
+        current_base_url="https://chatgpt.com/backend-api/codex",
+        current_api_key="",
+        explicit_provider="custom:local-(127.0.0.1:4141)",
+        user_providers={},
+        custom_providers=[
+            {
+                "name": "Local (127.0.0.1:4141)",
+                "base_url": "http://127.0.0.1:4141/v1",
+                "model": "my-llava-model",
+                "models": {
+                    "my-llava-model": {
+                        "context_length": 8192,
+                        "capabilities": {
+                            "vision": True,
+                            "tools": True,
+                            "reasoning": False,
+                        },
+                    }
+                },
+            }
+        ],
+    )
+
+    assert result.success is True
+    assert result.capabilities is not None
+    assert result.capabilities.supports_vision is True
+    assert result.capabilities.supports_tools is True
+    assert result.capabilities.supports_reasoning is False
+    assert result.capabilities.context_window == 8192
+    assert result.model_info is not None
+    assert "vision" in result.model_info.format_capabilities().lower()
