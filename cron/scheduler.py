@@ -107,7 +107,13 @@ _LEGACY_HOME_TARGET_ENV_VARS = {
     "QQBOT_HOME_CHANNEL": "QQ_HOME_CHANNEL",
 }
 
-from cron.jobs import get_due_jobs, mark_job_run, save_job_output, advance_next_run
+from cron.jobs import (
+    advance_next_run,
+    get_due_jobs,
+    mark_job_run,
+    normalize_job_fallback_providers,
+    save_job_output,
+)
 
 # Sentinel: when a cron agent has nothing new to report, it can start its
 # response with this marker to suppress delivery.  Output is still saved
@@ -120,6 +126,31 @@ _hermes_home = get_hermes_home()
 # File-based lock prevents concurrent ticks from gateway + daemon + systemd timer
 _LOCK_DIR = _hermes_home / "cron"
 _LOCK_FILE = _LOCK_DIR / ".tick.lock"
+
+
+def _resolve_job_fallback_providers(job: dict, cfg: dict) -> list[dict] | None:
+    """Resolve the effective fallback chain for a cron job.
+
+    Precedence:
+    1. Per-job ``fallback_providers`` in jobs.json. An explicit empty list means
+       "disable fallbacks for this job".
+    2. Global ``fallback_providers`` from config.yaml.
+    3. Legacy singular/dict ``fallback_model`` from config.yaml.
+    """
+    if "fallback_providers" in job:
+        return normalize_job_fallback_providers(
+            job.get("fallback_providers"),
+            allow_empty=True,
+        )
+
+    config_fallbacks = normalize_job_fallback_providers(
+        (cfg or {}).get("fallback_providers"),
+        allow_empty=True,
+    )
+    if config_fallbacks is not None:
+        return config_fallbacks
+
+    return normalize_job_fallback_providers((cfg or {}).get("fallback_model"))
 
 
 def _resolve_origin(job: dict) -> Optional[dict]:
@@ -934,6 +965,7 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
 
         # Provider routing
         pr = _cfg.get("provider_routing", {})
+        fallback_model = _resolve_job_fallback_providers(job, _cfg)
 
         from hermes_cli.runtime_provider import (
             resolve_runtime_provider,
@@ -950,8 +982,7 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
         except AuthError as auth_exc:
             # Primary provider auth failed — try fallback chain before giving up.
             logger.warning("Job '%s': primary auth failed (%s), trying fallback", job_id, auth_exc)
-            fb = _cfg.get("fallback_providers") or _cfg.get("fallback_model")
-            fb_list = (fb if isinstance(fb, list) else [fb]) if fb else []
+            fb_list = fallback_model or []
             runtime = None
             for entry in fb_list:
                 if not isinstance(entry, dict):
@@ -973,7 +1004,6 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
             message = format_runtime_provider_error(exc)
             raise RuntimeError(message) from exc
 
-        fallback_model = _cfg.get("fallback_providers") or _cfg.get("fallback_model") or None
         credential_pool = None
         runtime_provider = str(runtime.get("provider") or "").strip().lower()
         if runtime_provider:

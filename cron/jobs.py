@@ -67,7 +67,70 @@ def _apply_skill_fields(job: Dict[str, Any]) -> Dict[str, Any]:
     skills = _normalize_skill_list(normalized.get("skill"), normalized.get("skills"))
     normalized["skills"] = skills
     normalized["skill"] = skills[0] if skills else None
+    if "fallback_providers" in normalized:
+        normalized_fallbacks = normalize_job_fallback_providers(
+            normalized.get("fallback_providers"),
+            allow_empty=True,
+        )
+        if normalized_fallbacks is None:
+            normalized.pop("fallback_providers", None)
+        else:
+            normalized["fallback_providers"] = normalized_fallbacks
     return normalized
+
+
+def normalize_job_fallback_providers(
+    fallback_providers: Optional[Any],
+    *,
+    allow_empty: bool = False,
+) -> Optional[List[Dict[str, Any]]]:
+    if fallback_providers is None:
+        return None
+
+    if isinstance(fallback_providers, dict):
+        raw_items = [fallback_providers]
+    elif isinstance(fallback_providers, (list, tuple)):
+        raw_items = list(fallback_providers)
+    else:
+        raw_items = []
+    if not raw_items:
+        return [] if allow_empty and isinstance(fallback_providers, (list, tuple)) else None
+
+    normalized: List[Dict[str, Any]] = []
+    for entry in raw_items:
+        if not isinstance(entry, dict):
+            continue
+        provider = str(entry.get("provider") or "").strip()
+        model = str(entry.get("model") or "").strip()
+        if not provider or not model:
+            continue
+
+        normalized_entry = dict(entry)
+        normalized_entry["provider"] = provider
+        normalized_entry["model"] = model
+
+        base_url = str(entry.get("base_url") or "").strip().rstrip("/")
+        api_key = str(entry.get("api_key") or "").strip()
+        key_env = str(entry.get("key_env") or "").strip()
+
+        if base_url:
+            normalized_entry["base_url"] = base_url
+        else:
+            normalized_entry.pop("base_url", None)
+        if api_key:
+            normalized_entry["api_key"] = api_key
+        else:
+            normalized_entry.pop("api_key", None)
+        if key_env:
+            normalized_entry["key_env"] = key_env
+        else:
+            normalized_entry.pop("key_env", None)
+
+        normalized.append(normalized_entry)
+
+    if normalized:
+        return normalized
+    return None
 
 
 def _secure_dir(path: Path):
@@ -422,6 +485,7 @@ def create_job(
     model: Optional[str] = None,
     provider: Optional[str] = None,
     base_url: Optional[str] = None,
+    fallback_providers: Optional[Any] = None,
     script: Optional[str] = None,
     context_from: Optional[Union[str, List[str]]] = None,
     enabled_toolsets: Optional[List[str]] = None,
@@ -442,6 +506,7 @@ def create_job(
         model: Optional per-job model override
         provider: Optional per-job provider override
         base_url: Optional per-job base URL override
+        fallback_providers: Optional list of fallback providers
         script: Optional path to a Python script whose stdout is injected into the
                 prompt each run.  The script runs before the agent turn, and its output
                 is prepended as context.  Useful for data collection / change detection.
@@ -490,6 +555,10 @@ def create_job(
     normalized_toolsets = [str(t).strip() for t in enabled_toolsets if str(t).strip()] if enabled_toolsets else None
     normalized_toolsets = normalized_toolsets or None
     normalized_workdir = _normalize_workdir(workdir)
+    normalized_fallback_providers = normalize_job_fallback_providers(
+        fallback_providers,
+        allow_empty=True,
+    ) if fallback_providers is not None else None
 
     # Normalize context_from: accept str or list of str, store as list or None
     if isinstance(context_from, str):
@@ -533,6 +602,8 @@ def create_job(
         "enabled_toolsets": normalized_toolsets,
         "workdir": normalized_workdir,
     }
+    if normalized_fallback_providers is not None:
+        job["fallback_providers"] = normalized_fallback_providers
 
     jobs = load_jobs()
     jobs.append(job)
@@ -573,6 +644,17 @@ def update_job(job_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]
                 updates["workdir"] = None
             else:
                 updates["workdir"] = _normalize_workdir(_wd)
+
+        if "fallback_providers" in updates:
+            normalized_fallbacks = normalize_job_fallback_providers(
+                updates.get("fallback_providers"),
+                allow_empty=True,
+            )
+            if normalized_fallbacks is None:
+                updates.pop("fallback_providers", None)
+                job = {k: v for k, v in job.items() if k != "fallback_providers"}
+            else:
+                updates["fallback_providers"] = normalized_fallbacks
 
         updated = _apply_skill_fields({**job, **updates})
         schedule_changed = "schedule" in updates

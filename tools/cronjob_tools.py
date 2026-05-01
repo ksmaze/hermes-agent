@@ -24,6 +24,7 @@ from cron.jobs import (
     create_job,
     get_job,
     list_jobs,
+    normalize_job_fallback_providers,
     parse_schedule,
     pause_job,
     remove_job,
@@ -213,6 +214,13 @@ def _format_job(job: Dict[str, Any]) -> Dict[str, Any]:
         "paused_at": job.get("paused_at"),
         "paused_reason": job.get("paused_reason"),
     }
+    if "fallback_providers" in job:
+        normalized_fallbacks = normalize_job_fallback_providers(
+            job.get("fallback_providers"),
+            allow_empty=True,
+        )
+        if normalized_fallbacks is not None:
+            result["fallback_providers"] = normalized_fallbacks
     if job.get("script"):
         result["script"] = job["script"]
     if job.get("enabled_toolsets"):
@@ -236,6 +244,7 @@ def cronjob(
     model: Optional[str] = None,
     provider: Optional[str] = None,
     base_url: Optional[str] = None,
+    fallback_providers: Optional[List[Dict[str, Any]]] = None,
     reason: Optional[str] = None,
     script: Optional[str] = None,
     context_from: Optional[Union[str, List[str]]] = None,
@@ -289,6 +298,10 @@ def cronjob(
                 model=_normalize_optional_job_value(model),
                 provider=_normalize_optional_job_value(provider),
                 base_url=_normalize_optional_job_value(base_url, strip_trailing_slash=True),
+                fallback_providers=normalize_job_fallback_providers(
+                    fallback_providers,
+                    allow_empty=True,
+                ) if fallback_providers is not None else None,
                 script=_normalize_optional_job_value(script),
                 context_from=context_from,
                 enabled_toolsets=enabled_toolsets or None,
@@ -375,6 +388,11 @@ def cronjob(
                 updates["provider"] = _normalize_optional_job_value(provider)
             if base_url is not None:
                 updates["base_url"] = _normalize_optional_job_value(base_url, strip_trailing_slash=True)
+            if fallback_providers is not None:
+                updates["fallback_providers"] = normalize_job_fallback_providers(
+                    fallback_providers,
+                    allow_empty=True,
+                )
             if script is not None:
                 # Pass empty string to clear an existing script
                 if script:
@@ -501,6 +519,24 @@ Important safety rule: cron-run sessions should not recursively schedule more cr
                 },
                 "required": ["model"]
             },
+            "fallback_providers": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "provider": {
+                            "type": "string",
+                            "description": "Provider name (e.g. 'openrouter', 'anthropic')."
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": "Model name (e.g. 'anthropic/claude-sonnet-4', 'claude-sonnet-4')"
+                        }
+                    },
+                    "required": ["provider", "model"]
+                },
+                "description": "Optional list of fallback providers to use if the primary model fails."
+            },
             "script": {
                 "type": "string",
                 "description": f"Optional path to a Python script that runs before each cron job execution. Its stdout is injected into the prompt as context. Use for data collection and change detection. Relative paths resolve under {display_hermes_home()}/scripts/. On update, pass empty string to clear."
@@ -569,6 +605,7 @@ registry.register(
         model=_mo[1],
         provider=_mo[0] or args.get("provider"),
         base_url=args.get("base_url"),
+        fallback_providers=args.get("fallback_providers"),
         reason=args.get("reason"),
         script=args.get("script"),
         context_from=args.get("context_from"),
