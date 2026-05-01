@@ -455,6 +455,59 @@ def test_list_authenticated_providers_total_models_reflects_grouped_count(monkey
     assert sorted(group["models"]) == sorted(f"model-{i}" for i in range(6))
 
 
+def test_list_authenticated_providers_keeps_same_endpoint_different_api_modes_separate(monkeypatch):
+    """Custom providers sharing one base URL must stay split when api_mode differs.
+
+    Regression: endpoint grouping keyed only on (base_url, api_key), so distinct
+    transports like chat_completions / codex_responses / anthropic_messages got
+    merged into a single /model row.
+    """
+    monkeypatch.setattr("agent.models_dev.fetch_models_dev", lambda: {})
+    monkeypatch.setattr(providers_mod, "HERMES_OVERLAYS", {})
+
+    providers = list_authenticated_providers(
+        current_provider="custom:newapi-chat",
+        current_base_url="http://192.168.2.57:8318/v1",
+        current_api_mode="chat_completions",
+        user_providers={},
+        custom_providers=[
+            {
+                "name": "newapi",
+                "base_url": "http://192.168.2.57:8318/v1",
+                "api_key": "sk-test",
+                "api_mode": "codex_responses",
+                "model": "gpt-5.4",
+            },
+            {
+                "name": "newapi-chat",
+                "base_url": "http://192.168.2.57:8318/v1",
+                "api_key": "sk-test",
+                "api_mode": "chat_completions",
+                "model": "deepseek-v4-flash",
+            },
+            {
+                "name": "newapi-claude",
+                "base_url": "http://192.168.2.57:8318/v1",
+                "api_key": "sk-test",
+                "api_mode": "anthropic_messages",
+                "model": "claude-opus-4-6",
+            },
+        ],
+        max_models=10,
+    )
+
+    user_rows = [p for p in providers if p.get("is_user_defined")]
+    assert [p["slug"] for p in user_rows] == [
+        "custom:newapi-chat",
+        "custom:newapi",
+        "custom:newapi-claude",
+    ]
+    assert user_rows[0]["is_current"] is True
+    assert user_rows[0]["models"] == ["deepseek-v4-flash"]
+    assert user_rows[1]["models"] == ["gpt-5.4"]
+    assert user_rows[2]["models"] == ["claude-opus-4-6"]
+
+
 def test_lmstudio_picker_probes_active_config_base_url(monkeypatch):
     """When `provider: lmstudio` is saved with a remote base_url and no
     LM_BASE_URL env var, the picker must probe the saved base_url — not

@@ -5544,6 +5544,7 @@ class HermesCLI:
                 providers = list_authenticated_providers(
                     current_provider=self.provider or "",
                     current_base_url=self.base_url or "",
+                    current_api_mode=self.api_mode or "",
                     current_model=self.model or "",
                     user_providers=user_provs,
                     custom_providers=custom_provs,

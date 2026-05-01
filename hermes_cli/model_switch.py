@@ -993,6 +993,7 @@ def switch_model(
 def list_authenticated_providers(
     current_provider: str = "",
     current_base_url: str = "",
+    current_api_mode: str = "",
     user_providers: dict = None,
     custom_providers: list | None = None,
     max_models: int = 8,
@@ -1104,6 +1105,41 @@ def list_authenticated_providers(
                 models_list.remove(normalized_default)
             models_list.insert(0, normalized_default)
         return models_list
+
+    def _normalize_api_mode_value(value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized == "openai_chat":
+            return "chat_completions"
+        return normalized
+
+    def _entry_api_mode(entry: dict, api_url: str = "") -> str:
+        mode = _normalize_api_mode_value(entry.get("api_mode", ""))
+        if mode:
+            return mode
+        transport = _normalize_api_mode_value(entry.get("transport", ""))
+        if transport:
+            return transport
+        return determine_api_mode("custom", api_url)
+
+    current_api_mode_norm = _normalize_api_mode_value(current_api_mode)
+    if not current_api_mode_norm and current_provider and custom_providers and isinstance(custom_providers, list):
+        requested_provider = str(current_provider or "").strip().lower()
+        for entry in custom_providers:
+            if not isinstance(entry, dict):
+                continue
+            display_name = str(entry.get("name") or "").strip()
+            if not display_name:
+                continue
+            if requested_provider not in {display_name.lower(), custom_provider_slug(display_name)}:
+                continue
+            api_url = (
+                entry.get("base_url", "")
+                or entry.get("url", "")
+                or entry.get("api", "")
+                or ""
+            ).strip().rstrip("/")
+            current_api_mode_norm = _entry_api_mode(entry, api_url)
+            break
 
     data = fetch_models_dev()
 
@@ -1535,8 +1571,9 @@ def list_authenticated_providers(
             if not raw_name or not api_url:
                 continue
             api_key = (entry.get("api_key") or "").strip()
+            entry_api_mode = _entry_api_mode(entry, api_url)
 
-            group_key = (api_url, api_key)
+            group_key = (api_url, api_key, entry_api_mode)
             if group_key not in groups:
                 # Strip per-model suffix so "Ollama — GLM 5.1" becomes
                 # "Ollama" for the grouped row. Em dash is the convention
@@ -1555,6 +1592,10 @@ def list_authenticated_providers(
                 if (
                     current_base_url
                     and api_url == current_base_url.strip().rstrip("/")
+                    and (
+                        not current_api_mode_norm
+                        or entry_api_mode == current_api_mode_norm
+                    )
                 ):
                     # Guard against bare "custom" slug left by a prior
                     # failed switch — always resolve to the canonical
@@ -1570,6 +1611,7 @@ def list_authenticated_providers(
                     "slug": slug,
                     "name": display_name,
                     "api_url": api_url,
+                    "api_mode": entry_api_mode,
                     "models": [],
                 }
 

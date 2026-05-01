@@ -6483,6 +6483,7 @@ class GatewayRunner:
                     providers = list_authenticated_providers(
                         current_provider=current_provider,
                         current_base_url=current_base_url,
+                        current_api_mode=override.get("api_mode", "") if override else "",
                         current_model=current_model,
                         user_providers=user_provs,
                         custom_providers=custom_provs,
@@ -6616,6 +6617,7 @@ class GatewayRunner:
                 providers = list_authenticated_providers(
                     current_provider=current_provider,
                     current_base_url=current_base_url,
+                    current_api_mode=override.get("api_mode", "") if override else "",
                     current_model=current_model,
                     user_providers=user_provs,
                     custom_providers=custom_provs,
