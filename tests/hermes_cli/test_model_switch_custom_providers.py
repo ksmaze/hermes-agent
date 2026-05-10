@@ -132,6 +132,84 @@ def test_switch_model_accepts_explicit_named_custom_provider(monkeypatch):
     assert result.api_key == "no-key-required"
 
 
+def test_switch_model_accepts_inline_named_custom_provider_prefix(monkeypatch):
+    """/model provider:model should switch to saved user-config providers."""
+    monkeypatch.setattr(
+        "hermes_cli.runtime_provider.resolve_runtime_provider",
+        lambda **kwargs: {
+            "api_key": "no-key-required",
+            "base_url": "http://192.168.2.57:8318/v1",
+            "api_mode": "chat_completions",
+        },
+    )
+    monkeypatch.setattr("hermes_cli.models.validate_requested_model", lambda *a, **k: _MOCK_VALIDATION)
+    monkeypatch.setattr("hermes_cli.model_switch.get_model_info", lambda *a, **k: None)
+    monkeypatch.setattr("hermes_cli.model_switch.get_model_capabilities", lambda *a, **k: None)
+
+    result = switch_model(
+        raw_input="newapi:gpt-5.4",
+        current_provider="custom:newapi-chat",
+        current_model="deepseek-v4-flash",
+        current_base_url="http://192.168.2.57:8318/v1",
+        current_api_key="dummy",
+        user_providers={},
+        custom_providers=[
+            {
+                "name": "newapi",
+                "base_url": "http://192.168.2.57:8318/v1",
+                "model": "gpt-5.4",
+            },
+            {
+                "name": "newapi-chat",
+                "base_url": "http://192.168.2.57:8318/v1",
+                "model": "deepseek-v4-flash",
+            },
+        ],
+    )
+
+    assert result.success is True
+    assert result.target_provider == "custom:newapi"
+    assert result.provider_label == "newapi"
+    assert result.new_model == "gpt-5.4"
+    assert result.base_url == "http://192.168.2.57:8318/v1"
+
+
+def test_switch_model_does_not_treat_model_variant_suffix_as_provider_prefix(monkeypatch):
+    """Model names with colons must remain model names when the prefix is not a saved provider."""
+    monkeypatch.setattr(
+        "hermes_cli.runtime_provider.resolve_runtime_provider",
+        lambda **kwargs: {
+            "provider": kwargs.get("requested"),
+            "api_key": "ollama",
+            "base_url": "https://ollama.com/v1",
+            "api_mode": "chat_completions",
+        },
+    )
+    monkeypatch.setattr("hermes_cli.models.validate_requested_model", lambda *a, **k: _MOCK_VALIDATION)
+    monkeypatch.setattr("hermes_cli.model_switch.get_model_info", lambda *a, **k: None)
+    monkeypatch.setattr("hermes_cli.model_switch.get_model_capabilities", lambda *a, **k: None)
+
+    result = switch_model(
+        raw_input="qwen3-coder:480b-cloud",
+        current_provider="custom:ollama-cloud",
+        current_model="kimi-k2.5",
+        current_base_url="https://ollama.com/v1",
+        current_api_key="ollama",
+        user_providers={},
+        custom_providers=[
+            {
+                "name": "Ollama Cloud",
+                "base_url": "https://ollama.com/v1",
+                "model": "kimi-k2.5",
+            }
+        ],
+    )
+
+    assert result.success is True
+    assert result.target_provider == "custom:ollama-cloud"
+    assert result.new_model == "qwen3-coder:480b-cloud"
+
+
 def test_list_groups_same_name_custom_providers_into_one_row(monkeypatch):
     """Multiple custom_providers entries sharing a name should produce one row
     with all models collected, not N duplicate rows."""

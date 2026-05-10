@@ -13,9 +13,12 @@ This module ties together the foundation layers:
 - ``hermes_cli.providers``        -- canonical provider identity + overlays
 - ``hermes_cli.model_normalize``  -- per-provider name formatting
 
-Provider switching uses the ``--provider`` flag exclusively.
-No colon-based ``provider:model`` syntax — colons are reserved for
-OpenRouter variant suffixes (``:free``, ``:extended``, ``:fast``).
+Provider switching primarily uses the ``--provider`` flag.
+As a convenience, saved user-defined providers (``providers:`` /
+``custom_providers:`` from config.yaml) may also be addressed as
+``provider:model`` when the prefix uniquely resolves to a user-configured
+provider. Other colons remain part of the model name (for example OpenRouter
+variant suffixes like ``:free`` / ``:extended`` / ``:fast``).
 """
 
 from __future__ import annotations
@@ -532,6 +535,40 @@ def _resolve_alias_fallback(
     return None
 
 
+def _split_inline_user_provider_model(
+    raw_input: str,
+    user_providers: dict | None = None,
+    custom_providers: list | None = None,
+) -> Optional[tuple[str, str]]:
+    """Resolve ``provider:model`` for user-configured providers only.
+
+    This intentionally does *not* treat built-in provider names as inline
+    provider prefixes because that would collide with aggregator/vendor model
+    syntax (for example ``anthropic:claude-sonnet-4`` on OpenRouter) and with
+    legitimate model tags containing colons.  We only rewrite when the prefix
+    resolves to a provider whose source is ``user-config``.
+    """
+    text = (raw_input or "").strip()
+    if not text or ":" not in text or "/" in text:
+        return None
+
+    provider_part, model_part = text.split(":", 1)
+    provider_part = provider_part.strip()
+    model_part = model_part.strip()
+    if not provider_part or not model_part:
+        return None
+
+    pdef = resolve_provider_full(
+        provider_part,
+        user_providers=user_providers,
+        custom_providers=custom_providers,
+    )
+    if pdef is None or pdef.source != "user-config":
+        return None
+
+    return (pdef.id, model_part)
+
+
 def resolve_display_context_length(
     model: str,
     provider: str,
@@ -603,16 +640,16 @@ def switch_model(
         d. If no model, auto-detect from endpoint
 
       If no --provider:
-        a. Try alias resolution on current provider
-        b. If alias exists but not on current provider -> fallback
-        c. On aggregator, try vendor/model slug conversion
-        d. Aggregator catalog search
-        e. detect_provider_for_model() as last resort
-        f. Resolve credentials
-        g. Normalize model name for target provider
+        a. If input is user-configured ``provider:model``, switch to that provider
+        b. Try alias resolution on current provider
+        c. If alias exists but not on current provider -> fallback
+        d. On aggregator, try vendor/model slug conversion
+        e. Aggregator catalog search
+        f. detect_provider_for_model() as last resort
+        g. Resolve credentials
+        h. Normalize model name for target provider
 
       Finally:
-        h. Get full model metadata from models.dev
         i. Build result
 
     Args:
@@ -714,8 +751,22 @@ def switch_model(
     # PATH B: No explicit provider — resolve from model input
     # =================================================================
     else:
+        inline_provider = _split_inline_user_provider_model(
+            raw_input,
+            user_providers=user_providers,
+            custom_providers=custom_providers,
+        )
+        if inline_provider is not None:
+            target_provider, new_model = inline_provider
+            logger.debug(
+                "Inline user provider prefix '%s' resolved to provider=%s model=%s",
+                raw_input,
+                target_provider,
+                new_model,
+            )
+
         # --- Step a: Try alias resolution on current provider ---
-        alias_result = resolve_alias(raw_input, current_provider)
+        alias_result = None if inline_provider is not None else resolve_alias(raw_input, current_provider)
 
         if alias_result is not None:
             target_provider, new_model, resolved_alias = alias_result
@@ -723,7 +774,7 @@ def switch_model(
                 "Alias '%s' resolved to %s on %s",
                 resolved_alias, new_model, target_provider,
             )
-        else:
+        elif inline_provider is None:
             # --- Step b: Alias exists but not on current provider -> fallback ---
             key = raw_input.strip().lower()
             if key in MODEL_ALIASES:
