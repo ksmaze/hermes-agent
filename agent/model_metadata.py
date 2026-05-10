@@ -318,6 +318,17 @@ _URL_TO_PROVIDER: Dict[str, str] = {
     "ollama.com": "ollama-cloud",
 }
 
+# Auto-extend with hostnames derived from provider profiles.
+# Any provider with a base_url not already in the map gets added automatically.
+try:
+    from providers import list_providers as _list_providers
+    for _pp in _list_providers():
+        _host = _pp.get_hostname()
+        if _host and _host not in _URL_TO_PROVIDER:
+            _URL_TO_PROVIDER[_host] = _pp.name
+except Exception:
+    pass
+
 
 def _infer_provider_from_url(base_url: str) -> Optional[str]:
     """Infer the models.dev provider name from a base URL.
@@ -1233,6 +1244,7 @@ def get_model_context_length(
     config_context_length: int | None = None,
     provider: str = "",
     custom_providers: list | None = None,
+    agent_config: dict | None = None,
 ) -> int:
     """Get the context length for a model.
 
@@ -1257,6 +1269,10 @@ def get_model_context_length(
     # This closes the gap where /model switch and display paths used to fall
     # back to 128K despite the user having a per-model context_length set.
     # See #15779.
+    if custom_providers is None and isinstance(agent_config, dict):
+        raw_custom_providers = agent_config.get("custom_providers")
+        custom_providers = raw_custom_providers if isinstance(raw_custom_providers, list) else None
+
     if custom_providers and base_url and model:
         try:
             from hermes_cli.config import get_custom_provider_context_length
@@ -1357,9 +1373,13 @@ def get_model_context_length(
     # These are provider-specific and take priority over the generic OR cache,
     # since the same model can have different context limits per provider
     # (e.g. claude-opus-4.6 is 1M on Anthropic but 128K on GitHub Copilot).
-    # If provider is generic (openrouter/custom/empty), try to infer from URL.
+    # If the caller explicitly says ``openrouter``/``custom``, try to refine it
+    # from the URL. When provider is omitted entirely, treat the base URL as an
+    # opaque custom endpoint rather than inferring a first-party provider from
+    # hostname heuristics — that keeps unknown local gateways on the conservative
+    # fallback path unless the caller opted into a concrete provider.
     effective_provider = provider
-    if not effective_provider or effective_provider in ("openrouter", "custom"):
+    if effective_provider in ("openrouter", "custom"):
         if base_url:
             inferred = _infer_provider_from_url(base_url)
             if inferred:
@@ -1402,6 +1422,20 @@ def get_model_context_length(
         ctx = lookup_models_dev_context(effective_provider, model)
         if ctx:
             return ctx
+
+    # When callers supply an explicit base URL without a declared provider,
+    # treat it as an opaque endpoint. If config-based resolution and live
+    # probing did not identify a concrete limit, fall back conservatively
+    # instead of inheriting generic defaults from unrelated first-party APIs.
+    if base_url and not provider:
+        return DEFAULT_FALLBACK_CONTEXT
+
+    # Explicit base URLs with no resolved provider should not inherit generic
+    # family defaults from unrelated first-party APIs (e.g. ``gpt-5.4`` → 1.05M).
+    # For unknown/custom endpoints, if probing and config-based resolution did
+    # not identify a concrete limit, fall back to the conservative default.
+    if base_url and not effective_provider:
+        return DEFAULT_FALLBACK_CONTEXT
 
     # 6. OpenRouter live API metadata (provider-unaware fallback)
     metadata = fetch_model_metadata()

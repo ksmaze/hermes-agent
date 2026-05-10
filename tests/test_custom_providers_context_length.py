@@ -7,7 +7,7 @@ per-model context_length from custom_providers in agent_config.
 import pytest
 from unittest.mock import patch, MagicMock
 
-from agent.model_metadata import get_model_context_length
+from agent.model_metadata import get_model_context_length, DEFAULT_FALLBACK_CONTEXT
 
 
 class TestCustomProvidersContextLength:
@@ -76,7 +76,7 @@ class TestCustomProvidersContextLength:
             )
 
             # Should fall through to fallback (128000)
-            assert result == 128000
+            assert result == DEFAULT_FALLBACK_CONTEXT
 
     def test_custom_providers_no_match_different_model(self):
         """Test that custom_providers lookup fails when model doesn't match."""
@@ -108,7 +108,7 @@ class TestCustomProvidersContextLength:
             )
 
             # Should fall through to fallback (128000)
-            assert result == 128000
+            assert result == DEFAULT_FALLBACK_CONTEXT
 
     def test_custom_providers_multiple_providers(self):
         """Test that custom_providers lookup works with multiple providers."""
@@ -188,7 +188,7 @@ class TestCustomProvidersContextLength:
             )
 
             # Should fall through to fallback (128000)
-            assert result == 128000
+            assert result == DEFAULT_FALLBACK_CONTEXT
 
     def test_custom_providers_empty_list(self):
         """Test that empty custom_providers list is handled gracefully."""
@@ -208,7 +208,7 @@ class TestCustomProvidersContextLength:
                 agent_config=agent_config,
             )
 
-            assert result == 128000
+            assert result == DEFAULT_FALLBACK_CONTEXT
 
     def test_custom_providers_no_models_key(self):
         """Test that provider entry without models key is handled gracefully."""
@@ -234,7 +234,7 @@ class TestCustomProvidersContextLength:
                 agent_config=agent_config,
             )
 
-            assert result == 128000
+            assert result == DEFAULT_FALLBACK_CONTEXT
 
     def test_custom_providers_invalid_context_length(self):
         """Test that invalid context_length values are handled gracefully."""
@@ -265,7 +265,7 @@ class TestCustomProvidersContextLength:
             )
 
             # Should fall through to fallback due to invalid value
-            assert result == 128000
+            assert result == DEFAULT_FALLBACK_CONTEXT
 
     def test_custom_providers_url_normalization(self):
         """Test that base_url matching handles trailing slashes correctly."""
