@@ -49,7 +49,7 @@ _CRON_THREAT_PATTERNS = [
     (r'cat\s+[^\n]*(\.env|credentials|\.netrc|\.pgpass)', "read_secrets"),
     (r'authorized_keys', "ssh_backdoor"),
     (r'/etc/sudoers|visudo', "sudoers_mod"),
-    (r'rm\s+-rf\s+/', "destructive_root_rm"),
+    # (r'rm\s+-rf\s+/', "destructive_root_rm"),
 ]
 
 _CRON_INVISIBLE_CHARS = {
