@@ -1433,3 +1433,91 @@ test('windowsHide defaults to true on Windows, is left alone elsewhere', () => {
 If the logic lives inline in a god-file (`main.ts`, `cli.py`,
 `gateway/run.py`) and extracting it feels disruptive: that's the actual
 signal to do the extraction, not to regex around it.
+
+---
+
+## Fork-Specific Changes (KsMaze Clone)
+
+This clone carries patches that diverge from upstream NousResearch/hermes-agent.
+When merging upstream releases, these behaviors must be preserved.
+
+### Custom Provider Enhancements
+
+**Files:** `agent/models_dev.py`, `agent/model_metadata.py`, `hermes_cli/model_switch.py`,
+`hermes_cli/config.py`, `run_agent.py`, `gateway/run.py`, `cli.py`
+
+- **Capability overrides** (`agent/models_dev.py`): `get_model_capabilities()` accepts
+  a `custom_providers` parameter. Config entries can declare per-model `capabilities`
+  (vision, reasoning, tools, streaming) that override `models_dev` defaults. This
+  lets private/local models advertise capabilities without a `models_dev` entry.
+- **Context length lookup** (`agent/model_metadata.py`): `get_model_context_length()`
+  accepts an `agent_config` parameter with `custom_providers` lookup. Custom provider
+  entries can declare `context_length` per model.
+- **Inline provider switching** (`hermes_cli/model_switch.py`): `/model provider:model`
+  syntax resolves named custom provider prefixes (e.g. `newapi:gpt-5.4`).
+- **Split grouped providers by api_mode** (`hermes_cli/model_switch.py`): Custom
+  providers sharing the same base_url but different `api_mode` are kept as separate
+  groups rather than collapsed.
+- **Custom provider model exposure** (`hermes_cli/model_switch.py`):
+  `list_authenticated_providers()` surfaces custom_providers entries in the /model
+  picker, with stable `custom:<name>` slugs.
+- **Compression feasibility** (`run_agent.py`): Compression feasibility check passes
+  `custom_providers` through so compression works with custom endpoints.
+- **Empty credential pool guard** (`hermes_cli/model_switch.py`): Empty suppressed
+  credential pools (e.g. Copilot after `hermes auth remove`) don't falsely show
+  as authenticated.
+- **Valid config fields** (`hermes_cli/config.py`): `capabilities` is recognized as
+  a valid field in `custom_providers` entries. (Upstream later added `ssl_ca_cert`
+  and `ssl_verify` — both sets are kept.)
+
+### Cron Job Enhancements
+
+**Files:** `cron/jobs.py`, `cron/scheduler.py`, `tools/cronjob_tools.py`
+
+- **Fallback provider chain**: Jobs support a `fallback_providers` list. When the
+  primary provider fails (auth error, etc.), the scheduler iterates through fallback
+  entries. Per-job fallbacks override the global `fallback_providers` config, which
+  in turn overrides the legacy `fallback_model` config.
+- **`disabled_toolsets` in cron**: Jobs accept `disabled_toolsets` to reduce token
+  overhead by omitting unneeded toolsets from the agent's runtime.
+- **`disabled_skills` in cron**: Jobs accept `disabled_skills` to prevent specific
+  skills from loading during cron runs.
+- **Destructive root rm suppression** (`tools/cronjob_tools.py`): The
+  `destructive_root_rm` scanner pattern is disabled to reduce false positives
+  during cron job creation/editing.
+
+### Browser Scan Tool
+
+**Files:** `tools/browser_tool.py`, `tools/browser_camofox.py`
+
+- A `browser_scan` tool (`tools/browser_tool.py`) provides read-only page content
+  extraction (simplified HTML or plain text) from browser sessions. Lower overhead
+  than full browser interaction for content retrieval.
+
+### YOLO Mode Skill Manager
+
+**Files:** `tools/skill_manager_tool.py`
+
+- When YOLO mode is active (env `HERMES_YOLO_MODE=1` or session-level yolo),
+  `skill_manage` skip security scanning on skill edits/creates. This allows
+  trusted agent workflows to bypass the skills guard without permanently
+  disabling it.
+
+### JSON Utility Wrapper
+
+**Files:** `hermes_constants.py`
+
+- A wrapper around `json.dumps`/`json.dump` that defaults to `ensure_ascii=False`
+  for correct Unicode handling.
+
+### Merge History
+
+| Date | Upstream Tag | Notes |
+|------|-------------|-------|
+| 2026-08-07 | v2026.8.3 | 16 conflict files resolved; all local behaviors preserved |
+| 2026-06 | v2026.6.5 | Previous merge |
+| 2026-05 | v2026.5.16 | Previous merge |
+| 2026-05 | v2026.5.7 | Previous merge |
+| 2026-04 | v2026.4.30 | Previous merge |
+| 2026-04 | v2026.4.16 | Previous merge |
+| 2026-04 | v2026.4.13 | Previous merge |
