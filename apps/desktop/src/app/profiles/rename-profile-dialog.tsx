@@ -2,13 +2,22 @@ import { useEffect, useState } from 'react'
 
 import { ActionStatus } from '@/components/ui/action-status'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
+import { Field, FieldHint } from '@/components/ui/field'
+import { SanitizedInput } from '@/components/ui/sanitized-input'
 import { renameProfile } from '@/hermes'
+import { useI18n } from '@/i18n'
 import { AlertTriangle } from '@/lib/icons'
-import { cn } from '@/lib/utils'
+import { slug } from '@/lib/sanitize'
 
-import { isValidProfileName, PROFILE_NAME_HINT } from './create-profile-dialog'
+import { isValidProfileName } from './create-profile-dialog'
 
 // Self-contained rename (owns the renameProfile call) so every caller just
 // reacts via onRenamed. Unchanged name is a no-op close.
@@ -23,6 +32,8 @@ export function RenameProfileDialog({
   onRenamed?: (name: string) => Promise<void> | void
   open: boolean
 }) {
+  const { t } = useI18n()
+  const p = t.profiles
   const [name, setName] = useState(currentName)
   const [status, setStatus] = useState<'done' | 'idle' | 'saving'>('idle')
   const [error, setError] = useState<null | string>(null)
@@ -52,7 +63,7 @@ export function RenameProfileDialog({
     }
 
     if (!trimmed || invalid) {
-      setError(invalid ? `Invalid name. ${PROFILE_NAME_HINT}` : 'Name is required.')
+      setError(invalid ? p.invalidName(p.nameHint) : p.nameRequired)
 
       return
     }
@@ -67,7 +78,7 @@ export function RenameProfileDialog({
       window.setTimeout(onClose, 800)
     } catch (err) {
       setStatus('idle')
-      setError(err instanceof Error ? err.message : 'Failed to rename profile')
+      setError(err instanceof Error ? err.message : p.failedRename)
     }
   }
 
@@ -75,29 +86,26 @@ export function RenameProfileDialog({
     <Dialog onOpenChange={value => !value && !busy && onClose()} open={open}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Rename profile</DialogTitle>
+          <DialogTitle>{p.renameTitle}</DialogTitle>
           <DialogDescription>
-            Renaming updates the profile directory and any wrapper scripts in{' '}
-            <span className="font-mono">~/.local/bin</span>.
+            {p.renameDescPrefix}
+            <span className="font-mono">~/.local/bin</span>
+            {p.renameDescSuffix}
           </DialogDescription>
         </DialogHeader>
 
-        <form className="grid gap-3" onSubmit={handleSubmit}>
-          <div className="grid gap-1.5">
-            <label className="text-xs font-medium" htmlFor="rename-profile-name">
-              New name
-            </label>
-            <Input
+        <form className="grid gap-4" onSubmit={handleSubmit}>
+          <Field htmlFor="rename-profile-name" label={p.newNameLabel}>
+            <SanitizedInput
               aria-invalid={invalid}
               autoFocus
               id="rename-profile-name"
-              onChange={event => setName(event.target.value)}
+              onValueChange={setName}
+              sanitize={slug}
               value={name}
             />
-            <p className={cn('text-[0.66rem] leading-4', invalid ? 'text-destructive' : 'text-muted-foreground')}>
-              {PROFILE_NAME_HINT}
-            </p>
-          </div>
+            <FieldHint error={invalid}>{p.nameHint}</FieldHint>
+          </Field>
 
           {error && (
             <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -108,10 +116,10 @@ export function RenameProfileDialog({
 
           <DialogFooter>
             <Button disabled={busy} onClick={onClose} type="button" variant="ghost">
-              Cancel
+              {t.common.cancel}
             </Button>
             <Button disabled={busy || invalid || unchanged} type="submit">
-              <ActionStatus busy="Renaming…" done="Renamed" idle="Rename" state={status} />
+              <ActionStatus busy={p.renaming} done={p.renamed} idle={p.rename} state={status} />
             </Button>
           </DialogFooter>
         </form>
