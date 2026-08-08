@@ -3482,7 +3482,7 @@ def run_job(
                     f"(or pin the original values to keep them). See #44585."
                 )
 
-        fallback_model = get_fallback_chain(_cfg) or None
+        fallback_model = fallback_model if fallback_model is not None else (get_fallback_chain(_cfg) or None)
         credential_pool = None
         runtime_provider = str(runtime.get("provider") or "").strip().lower()
         if runtime_provider:

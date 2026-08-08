@@ -328,14 +328,16 @@ class TestScriptOutputNotStrictScanned:
     def test_user_prompt_still_strict_scanned_when_script_present(self, cron_env):
         """The user-authored prompt keeps the STRICT guarantee even when the
         looser tier was selected for the script-output blob (defense-in-depth
-        for legacy jobs that predate the create-time scanner)."""
+        for legacy jobs that predate the create-time scanner).
+        Fork note: destructive_root_rm is intentionally disabled; use
+        read_secrets payload instead."""
         _, scheduler = cron_env
         with pytest.raises(scheduler.CronPromptInjectionBlocked) as exc_info:
             scheduler._build_job_prompt(
-                self._script_job(prompt="clean up with " + self.RM_ROOT),
+                self._script_job(prompt="check the env file: " + self.CAT_ENV),
                 prerun_script=(True, "some harmless feed data"),
             )
-        assert "destructive_root_rm" in str(exc_info.value)
+        assert "read_secrets" in str(exc_info.value)
 
     def test_invisible_unicode_in_script_output_sanitized_not_blocked(self, cron_env):
         """A stray zero-width space in feed data is stripped, not a hard block."""

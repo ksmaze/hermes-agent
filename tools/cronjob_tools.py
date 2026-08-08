@@ -222,7 +222,7 @@ def _strip_cron_safe_constructs(prompt: str) -> str:
     # payloads survive the strip and stay scanned.
     prompt = re.sub(
         _gh_auth_prefix
-        + r'https://api\.github\.com(?::\d+)?[^\n;&|$`]*',
+        + r'https://api\.github\.com(?::\d+)?(?:/|\s|$|["\'])[^\n;&|$`]*',
         'curl https://api.github.com/user',
         prompt,
         flags=re.IGNORECASE | re.MULTILINE,
