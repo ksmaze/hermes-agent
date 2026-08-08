@@ -3016,7 +3016,7 @@ def list_authenticated_providers(
                     _display_prefix = _display_prefix.split(sep)[0].strip()
                     break
 
-            group_key = (api_url, credential_identity, api_mode, headers_identity, _display_prefix.lower())
+            group_key = (api_url, credential_identity, entry_api_mode, headers_identity, _display_prefix.lower())
             if group_key not in groups:
                 # Reuse the prefix computed above as the row display name;
                 # fall back to the raw name if stripping left it empty.
@@ -3030,7 +3030,7 @@ def list_authenticated_providers(
                     and api_url == current_base_url.strip().rstrip("/")
                     and (
                         not current_api_mode_norm
-                        or api_mode == current_api_mode_norm
+                        or entry_api_mode == current_api_mode_norm
                     )
                 ):
                     # Guard against bare "custom" slug left by a prior
@@ -3091,7 +3091,6 @@ def list_authenticated_providers(
             and str(_grp["api_url"]).strip().rstrip("/").lower() == _current_base_url_norm
         )
         for grp_key, grp in groups.items():
-            api_url, api_key, _group_api_mode = grp_key
             api_url = grp["api_url"]
             api_key = grp.get("api_key", "")
             slug = grp["slug"]

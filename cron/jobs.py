@@ -1304,6 +1304,30 @@ def _normalized_inference_axes(job: Dict[str, Any]) -> Tuple[Optional[str], Opti
     )
 
 
+def _normalize_profile(profile: Optional[str]) -> Optional[str]:
+    """Normalize and validate an optional cron job profile name.
+
+    Empty / None disables per-job profile selection. Otherwise the profile name
+    is canonicalized with the same rules as ``hermes -p`` and must refer to an
+    existing profile at create/update time. ``default`` is the built-in root
+    profile and is always valid.
+    """
+    if profile is None:
+        return None
+    raw = str(profile).strip()
+    if not raw:
+        return None
+
+    from hermes_cli.profiles import normalize_profile_name, resolve_profile_env
+
+    normalized = normalize_profile_name(raw)
+    # resolve_profile_env validates the canonical name and checks that named
+    # profiles exist. Store only the stable profile id, not the filesystem path,
+    # so profile directories can move with the Hermes root.
+    resolve_profile_env(normalized)
+    return normalized
+
+
 def create_job(
     prompt: Optional[str],
     schedule: str,
@@ -1321,6 +1345,7 @@ def create_job(
     context_from: Optional[Union[str, List[str]]] = None,
     enabled_toolsets: Optional[List[str]] = None,
     workdir: Optional[str] = None,
+    profile: Optional[str] = None,
     no_agent: bool = False,
     attach_to_session: Optional[bool] = None,
 ) -> Dict[str, Any]:
@@ -1600,25 +1625,25 @@ def update_job(job_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]
                 else:
                     updates["workdir"] = _normalize_workdir(_wd)
 
-        if "fallback_providers" in updates:
-            normalized_fallbacks = normalize_job_fallback_providers(
-                updates.get("fallback_providers"),
-                allow_empty=True,
-            )
-            if normalized_fallbacks is None:
-                updates.pop("fallback_providers", None)
-                job = {k: v for k, v in job.items() if k != "fallback_providers"}
-            else:
-                updates["fallback_providers"] = normalized_fallbacks
+            if "fallback_providers" in updates:
+                normalized_fallbacks = normalize_job_fallback_providers(
+                    updates.get("fallback_providers"),
+                    allow_empty=True,
+                )
+                if normalized_fallbacks is None:
+                    updates.pop("fallback_providers", None)
+                    job = {k: v for k, v in job.items() if k != "fallback_providers"}
+                else:
+                    updates["fallback_providers"] = normalized_fallbacks
 
-        # Validate / normalize profile if present in updates.  Empty string or
-        # None both mean "clear the field" (restore old behaviour).
-        if "profile" in updates:
-            _profile = updates["profile"]
-            if _profile is None or _profile == "" or _profile is False:
-                updates["profile"] = None
-            else:
-                updates["profile"] = _normalize_profile(_profile)
+            # Validate / normalize profile if present in updates.  Empty string or
+            # None both mean "clear the field" (restore old behaviour).
+            if "profile" in updates:
+                _profile = updates["profile"]
+                if _profile is None or _profile == "" or _profile is False:
+                    updates["profile"] = None
+                else:
+                    updates["profile"] = _normalize_profile(_profile)
 
             previous_inference_axes = _normalized_inference_axes(job)
             updated = _apply_skill_fields({**job, **updates})

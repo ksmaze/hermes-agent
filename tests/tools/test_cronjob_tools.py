@@ -395,24 +395,23 @@ class TestUnifiedCronjobTool:
 # =========================================================================
 
 
-class TestAgentCannotSetModelPin:
-    """Per-job inference pins are user-owned (dashboard / `hermes cron`
-    --model / hand-edited jobs). The agent-facing tool schema must not expose
-    model/provider/base_url, and the registered handler must ignore them even
-    if a model hallucinates the old parameters."""
+class TestAgentCanSetModelPin:
+    """Local fork contract: the agent-facing cron tool intentionally exposes
+    model/provider/fallback_providers so scheduled jobs can pin primaries and
+    fallbacks."""
 
-    def test_schema_has_no_inference_pin_params(self):
+    def test_schema_has_inference_pin_params(self):
         from tools.cronjob_tools import CRONJOB_SCHEMA
 
         props = CRONJOB_SCHEMA["parameters"]["properties"]
-        assert "model" not in props
-        assert "provider" not in props
-        assert "base_url" not in props
+        assert props["model"]["type"] == "object"
+        assert "provider" in props["model"]["properties"]
+        assert "fallback_providers" in props
 
 
-    def test_handler_update_leaves_user_pin_untouched(self):
-        """An update through the agent handler must not clear or change a
-        user-set pin (grandfathered agent-era pins included)."""
+    def test_handler_update_applies_model_pin(self):
+        """An update through the agent handler can intentionally change a
+        job's pinned model/provider."""
         from cron.jobs import get_job
         from tools.registry import registry
 
@@ -434,15 +433,15 @@ class TestAgentCannotSetModelPin:
                     "action": "update",
                     "job_id": job_id,
                     "name": "renamed",
-                    "model": {"model": "openai/gpt-4.1"},
+                    "model": {"provider": "openai", "model": "openai/gpt-4.1"},
                 },
             )
         )
         assert updated["success"] is True
         stored = get_job(job_id)
         assert stored is not None
-        assert stored["model"] == "anthropic/claude-sonnet-4"
-        assert stored["provider"] == "anthropic"
+        assert stored["model"] == "openai/gpt-4.1"
+        assert stored["provider"] == "openai"
         assert stored["name"] == "renamed"
 
 
@@ -550,7 +549,10 @@ class TestGithubExemptionAbuse:
             assert "Blocked" in _scan_cron_prompt(prompt), sep
 
     def test_same_line_destructive_after_github_url_is_scanned(self):
-        prompt = f"{self.GH} && rm -rf / --no-preserve-root"
+        # Verifies the strip leaves the payload after the github URL intact
+        # for scanning. The destructive_rm pattern is intentionally disabled
+        # in this fork, so use a payload that IS caught (read_secrets).
+        prompt = f"{self.GH} && cat ~/.hermes/.env"
         assert "Blocked" in _scan_cron_prompt(prompt)
 
     def test_legit_github_alone_and_with_query_still_allowed(self):

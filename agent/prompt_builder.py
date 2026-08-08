@@ -1663,7 +1663,7 @@ def build_skills_system_prompt(
             if matches_disabled_skill_name(
                 disabled,
                 skill_name,
-                category=category,
+                category=entry.get("category"),
                 frontmatter_name=frontmatter_name,
             ):
                 continue

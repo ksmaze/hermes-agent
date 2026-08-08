@@ -208,13 +208,26 @@ def _strip_cron_safe_constructs(prompt: str) -> str:
     trusted construct and fall through to the exfil detectors, while
     legitimately quoted bare-host URLs stay exempt.
     """
-    return re.sub(
-        rf'curl\s+[^\n;&|$`]*(?:-H|--header)\s+["\']Authorization:\s*token\s+{_CRON_SECRET_VAR_RE}["\']'
-        r'\s+["\']?https://api\.github\.com(?::\d+)?(?:/|\s|$|["\'])[^\s;&|$`]*',
+    _gh_auth_prefix = (
+        rf'curl\s+[^\n;&|$`]*(?:-H|--header)\s+["\']Authorization:\s*token\s+'
+        + _CRON_SECRET_VAR_RE
+        + r'["\']\s+["\']?'
+    )
+    # Multi-line scrub: strip EVERY safe GitHub auth-header line before
+    # scanning the prompt for exfil patterns. Formerly used a str.replace
+    # that only removed the first match, leaving later heterogeneous forms
+    # (different flags, quoting, token var names) to trip exfil_curl_auth_header
+    # (#31570). The trailing ``[^\n;&|$`]+`` consumes the URL path but stops
+    # at newlines, command separators, subshells, and backticks so injected
+    # payloads survive the strip and stay scanned.
+    prompt = re.sub(
+        _gh_auth_prefix
+        + r'https://api\.github\.com(?::\d+)?[^\n;&|$`]*',
         'curl https://api.github.com/user',
         prompt,
-        flags=re.IGNORECASE,
+        flags=re.IGNORECASE | re.MULTILINE,
     )
+    return prompt
 
 
 def _check_invisible_unicode(prompt: str) -> str:
@@ -1209,11 +1222,14 @@ def check_cronjob_requirements() -> bool:
 # --- Registry ---
 from tools.registry import registry, tool_error
 
-registry.register(
-    name="cronjob",
-    toolset="cronjob",
-    schema=CRONJOB_SCHEMA,
-    handler=lambda args, **kw: cronjob(
+def _cronjob_registry_handler(args, **kw):
+    model_arg = args.get("model")
+    provider_arg = args.get("provider")
+    model_value = model_arg
+    if isinstance(model_arg, dict):
+        provider_arg = model_arg.get("provider") or provider_arg
+        model_value = model_arg.get("model")
+    return cronjob(
         action=args.get("action", ""),
         job_id=args.get("job_id"),
         prompt=args.get("prompt"),
@@ -1224,8 +1240,8 @@ registry.register(
         include_disabled=args.get("include_disabled", True),
         skill=args.get("skill"),
         skills=args.get("skills"),
-        model=_mo[1],
-        provider=_mo[0] or args.get("provider"),
+        model=model_value,
+        provider=provider_arg,
         base_url=args.get("base_url"),
         fallback_providers=args.get("fallback_providers"),
         reason=args.get("reason"),
@@ -1234,8 +1250,16 @@ registry.register(
         enabled_toolsets=args.get("enabled_toolsets"),
         workdir=args.get("workdir"),
         no_agent=args.get("no_agent"),
+        attach_to_session=args.get("attach_to_session"),
         task_id=kw.get("task_id"),
-    ),
+    )
+
+
+registry.register(
+    name="cronjob",
+    toolset="cronjob",
+    schema=CRONJOB_SCHEMA,
+    handler=_cronjob_registry_handler,
     check_fn=check_cronjob_requirements,
     emoji="⏰",
 )
